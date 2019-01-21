@@ -71,6 +71,12 @@ class EloquentViewableServiceProvider extends ServiceProvider
             return new CrawlerDetectAdapter($detector);
         });
 
+        $this->app->bind(VisitorCookieRepository::class, function ($app) {
+            return new VisitorCookieRepository(
+                config('eloquent-viewable.visitor_cookie_key'),
+            );
+        });
+
         $this->app->singleton(CrawlerDetectorContract::class, CrawlerDetectAdapter::class);
         $this->app->singleton(IpAddressResolverContract::class, IpAddressResolver::class);
         $this->app->singleton(HeaderResolverContract::class, HeaderResolver::class);

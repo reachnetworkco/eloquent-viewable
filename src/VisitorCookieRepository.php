@@ -25,29 +25,66 @@ class VisitorCookieRepository
     protected $key;
 
     /**
-     * Create a new view session history instance.
      *
+     */
+    protected $lifetime;
+
+    /**
+     * Create a new view visitor cookie instance.
+     *
+     * @param  string  $key
      * @return void
      */
-    public function __construct()
+    public function __construct(string $key, ?int $lifetime)
     {
-        $this->key = config('eloquent-viewable.visitor_cookie_key');
+        $this->key = $key;
+        $this->lifetime = $lifetime;
     }
 
     /**
-     * Get the visitor's unique key.
+     * Determine if the visitor cookie exists on the request.
+     *
+     * @return string
+     */
+    public function has()
+    {
+        return Cookie::has($this->key);
+    }
+
+    /**
+     * Retrieve the visitor cookie from the request.
      *
      * @return string
      */
     public function get()
     {
-        if (! Cookie::has($this->key)) {
-            Cookie::queue($this->key, $uniqueString = $this->generateUniqueString(), $this->expirationInMinutes());
+        return Cookie::get($this->key);
+    }
 
-            return $uniqueString;
+    /**
+     * Create a new visitor cookie if none exists.
+     *
+     * @return string
+     */
+    public function push()
+    {
+        if(! $this->has()) {
+            $uniqueString = $this->make();
         }
 
-        return Cookie::get($this->key);
+        return $uniqueString ?? $this->get();
+    }
+
+    /**
+     * Create a new visitor and return the unique id.
+     *
+     * @return string
+     */
+    public function make()
+    {
+        Cookie::queue($this->key, $uniqueString = $this->generateUniqueString(), $this->lifetime);
+
+        return $uniqueString;
     }
 
     /**
@@ -65,8 +102,8 @@ class VisitorCookieRepository
      *
      * @return int
      */
-    protected function expirationInMinutes(): int
+    protected function resolveExpiration(): int
     {
-        return 2628000; // aka 5 years
+        return $this->lifetime ?? 2628000; // aka 5 years
     }
 }

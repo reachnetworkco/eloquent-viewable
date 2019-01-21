@@ -409,6 +409,6 @@ class Views
      */
     protected function resolveVisitorId()
     {
-        return $this->visitorCookieRepository->get();
+        return $this->visitorCookieRepository->has() ? $this->visitorCookieRepository->get() : $this->visitorCookieRepository->make();
     }
 }
