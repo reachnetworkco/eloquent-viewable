@@ -17,6 +17,7 @@ use DateTime;
 use Carbon\Carbon;
 use Illuminate\Support\Traits\Macroable;
 use CyrildeWit\EloquentViewable\Support\Period;
+use CyrildeWit\EloquentViewable\Contracts\Cooldown;
 use CyrildeWit\EloquentViewable\Contracts\HeaderResolver;
 use CyrildeWit\EloquentViewable\Contracts\CrawlerDetector;
 use CyrildeWit\EloquentViewable\Contracts\IpAddressResolver;
@@ -50,11 +51,11 @@ class Views
     protected $unique = false;
 
     /**
-     * The delay that should be finished before a new view can be recorded.
+     * The cooldown that's actove between storing views.
      *
      * @var \DateTime|null
      */
-    protected $sessionDelay = null;
+    protected $cooldown = null;
 
     /**
      * The collection under where the view will be saved.
@@ -82,21 +83,14 @@ class Views
      *
      * @var string
      */
-    protected $overriddenIpAddress;
+    protected $visitorIpAddress;
 
     /**
      * Used visitor ID instead of the provided one by a cookie.
      *
      * @var string
      */
-    protected $overriddenVisitor;
-
-    /**
-     * The view session history instance.
-     *
-     * @var \CyrildeWit\EloquentViewable\ViewSessionHistory
-     */
-    protected $viewSessionHistory;
+    protected $visitor;
 
     /**
      * The visitor cookie repository instance.
@@ -139,14 +133,13 @@ class Views
      * @return void
      */
     public function __construct(
-        ViewSessionHistory $viewSessionHistory,
+        Cooldown $cooldown,
         VisitorCookieRepository $visitorCookieRepository,
         CrawlerDetector $crawlerDetector,
         IpAddressResolver $ipAddressResolver,
         HeaderResolver $headerResolver,
         CacheRepository $cache
     ) {
-        $this->viewSessionHistory = $viewSessionHistory;
         $this->visitorCookieRepository = $visitorCookieRepository;
         $this->crawlerDetector = $crawlerDetector;
         $this->ipAddressResolver = $ipAddressResolver;
@@ -289,18 +282,18 @@ class Views
     }
 
     /**
-     * Set the delay in the session.
+     * Set a cooldown between storing views.
      *
-     * @param  \DateTime|int  $delay
+     * @param  \DateTime|int  $cooldown
      * @return $this
      */
-    public function delayInSession($delay): self
+    public function cooldown($cooldown): self
     {
-        if (is_int($delay)) {
-            $delay = Carbon::now()->addMinutes($delay);
+        if (is_int($cooldown)) {
+            $cooldown = Carbon::now()->addMinutes($cooldown);
         }
 
-        $this->sessionDelay = $delay;
+        $this->cooldown = $cooldown;
 
         return $this;
     }
@@ -396,18 +389,18 @@ class Views
      */
     protected function shouldRecord(): bool
     {
-        // If ignore bots is true and the current viewer is a bot, return false
-        if (config('eloquent-viewable.ignore_bots') && $this->crawlerDetector->isCrawler()) {
-            return false;
-        }
-
-        // If we honor to the DNT header and the current request contains the
-        // DNT header, return false
-        if (config('eloquent-viewable.honor_dnt', false) && $this->requestHasDoNotTrackHeader()) {
+        if (
+            (! $this->hasVisitorDoNotTrackHeader()) &&
+            (! $this->isVisitorABot()) &&
+        ) {
             return false;
         }
 
         if (collect(config('eloquent-viewable.ignored_ip_addresses'))->contains($this->resolveIpAddress())) {
+            return false;
+        }
+
+        if ($this->inCooldown()) {
             return false;
         }
 
@@ -416,6 +409,34 @@ class Views
         }
 
         return true;
+    }
+
+    /**
+     *
+     */
+    protected function isVisitorABot()
+    {
+        return config('eloquent-viewable.ignore_bots') && $this->crawlerDetector->isCrawler();
+
+        // If ignore bots is true and the current viewer is a bot, return false
+        if () {
+            return false;
+        }
+    }
+
+    /**
+     * If we honor the DNT header and the current request contains it, return true.
+     *
+     * @return bool
+     */
+    public function hasVisitorDoNotTrackHeader()
+    {
+        return config('eloquent-viewable.honor_dnt') && $this->requestHasDoNotTrackHeader();
+    }
+
+    protected function inCooldown()
+    {
+        return $this->sessionCooldown->isActive();
     }
 
     /**
